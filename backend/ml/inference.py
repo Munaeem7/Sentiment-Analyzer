@@ -1,5 +1,4 @@
 """
-Sentiment analysis inference module
 Loads the trained pipeline and makes predictions
 """
 import joblib
@@ -7,7 +6,6 @@ import os
 import sys
 
 # Add current directory to Python path
-# This allows Python to find text_cleaner.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
@@ -35,16 +33,8 @@ except Exception as e:
 def predict(text: str):
     """
     Predict sentiment for input text
-    
-    Args:
-        text: Review text to analyze
-        
-    Returns:
-        Dictionary with sentiment, confidence, and probabilities for all classes
-        Example: {
-            "sentiment": "Positive",
-            "confidence": 0.854,
-        }
+    Returns
+    Dictionary with sentiment, confidence
     """
     if pipeline is None:
         raise RuntimeError("Model not loaded. Run notebook first.")
