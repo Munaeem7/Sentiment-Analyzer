@@ -17,7 +17,7 @@ from text_cleaner import TextCleaner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "sentiment_pipeline.joblib")
 
-# Load pipeline with error handling
+# Load pipeline
 try:
     pipeline = joblib.load(MODEL_PATH)
     print(f"Model loaded successfully from: {MODEL_PATH}")
