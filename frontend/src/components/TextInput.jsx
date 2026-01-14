@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 const TextInput = ({ value, onChange, placeholder, disabled }) => {
@@ -34,7 +33,7 @@ const TextInput = ({ value, onChange, placeholder, disabled }) => {
             ${disabled ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : ''}
           `}
           rows="6"
-          maxLength={5000}
+          maxLength={1000}
         />
         
         {value && (
@@ -52,7 +51,7 @@ const TextInput = ({ value, onChange, placeholder, disabled }) => {
       </div>
 
       <div className="text-xs text-gray-500">
-        Enter at least 10 characters for accurate analysis. Maximum 5,000 characters.
+        Enter at least 10 characters for accurate analysis. Maximum 1,000 characters.
       </div>
     </div>
   );

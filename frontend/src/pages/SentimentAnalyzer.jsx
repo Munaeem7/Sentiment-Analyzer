@@ -103,7 +103,7 @@ const SentimentAnalyzer = () => {
                 <TextInput 
                   value={text} 
                   onChange={setText}
-                  placeholder="Enter or paste your text here (e.g., customer feedback, product reviews, social media comments)"
+                  placeholder="Enter your text here (product reviews, social media comments)"
                   disabled={isLoading}
                 />
 
@@ -120,7 +120,7 @@ const SentimentAnalyzer = () => {
                       <button
                         type="button"
                         onClick={handleClear}
-                        className="px-5 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                        className="px-5 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
                       >
                         Clear
                       </button>
