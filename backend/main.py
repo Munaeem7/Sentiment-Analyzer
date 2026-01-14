@@ -2,8 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
-import json
-from ml.inference import predict
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI(
     title="Sentiment Analysis API",
@@ -11,13 +13,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS for frontend
+origins = [
+    "http://localhost:5173",  # Local 
+    "https://analyzetextsentiment.vercel.app/",  #  Vercel
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
+    allow_origins=origins, 
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 class TextInput(BaseModel):
@@ -51,17 +58,23 @@ async def predict_sentiment(data: TextInput):
         if not data.text or not data.text.strip():
             raise HTTPException(status_code=400, detail="Text input cannot be empty")
         
-        if len(data.text) > 10000:  # Prevent very large inputs
+        if len(data.text) > 10000:
             raise HTTPException(status_code=400, detail="Text is too long (max 10000 characters)")
-        
-        # Get prediction from ML model
+
+        try:
+            from ml.inference import predict
+        except ImportError as e:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"ML model not available: {str(e)}"
+            )
+
         result = predict(data.text)
         
-        # Ensure result is a dictionary
+
         if not isinstance(result, dict):
             result = {"prediction": result}
-        
-        # Add additional metadata
+
         response = {
             "success": True,
             "text": data.text,
@@ -74,13 +87,13 @@ async def predict_sentiment(data: TextInput):
         if 'sentiment' not in response:
             # Try to extract from prediction
             if 'prediction' in response:
-                response['sentiment'] = response['prediction']
+                response['sentiment'] = str(response['prediction']).lower()
             elif 'label' in response:
-                response['sentiment'] = response['label']
+                response['sentiment'] = str(response['label']).lower()
         
         # Add confidence if available
         if 'confidence' not in response and 'probability' in response:
-            response['confidence'] = response['probability']
+            response['confidence'] = float(response['probability'])
         
         return response
         
@@ -89,4 +102,11 @@ async def predict_sentiment(data: TextInput):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        # Log the actual error for debugging
+        print(f"Prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+#for Railway health checks
+@app.get("/ping")
+def ping():
+    return {"message": "pong"}

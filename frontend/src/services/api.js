@@ -1,22 +1,21 @@
-
 import axios from 'axios';
 
-// API Configuration
 const API_CONFIG = {
-  BASE_URL: 'http://localhost:8000',
-  TIMEOUT: 10000,
+  BASE_URL: 'http://localhost:8000',  // for production  import.meta.env.VITE_BACKEND_URL, for now there is issue in hosting model
+  TIMEOUT: 15000, // Increased timeout
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 1000
 };
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_CONFIG.BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
     'X-Client': 'sentiment-analyzer-ui'
   },
   timeout: API_CONFIG.TIMEOUT,
+  withCredentials: false,
 });
 
 // Request interceptor
@@ -43,13 +42,15 @@ api.interceptors.response.use(
     console.error('API Error:', {
       status: error.response?.status,
       message: error.message,
-      url: originalRequest.url
+      url: originalRequest?.url,
+      response: error.response?.data
     });
 
-    if (error.response?.status >= 400 && error.response?.status < 500) {
-      return Promise.reject(error);
+    // Handle specific errors
+    if (!error.response) {
+      error.message = 'Network Error: Cannot connect to backend service';
     }
-
+    
     return Promise.reject(error);
   }
 );
@@ -60,16 +61,30 @@ export const analyzeSentiment = async (text) => {
     
     const response = await api.post('/predict', { 
       text,
-      timestamp: new Date().toISOString()
     });
     
     console.log('Received response:', response.data);
 
     const data = response.data;
     
-    const sentiment = (data.sentiment || data.prediction || 'neutral').toLowerCase();
+    if (!data.success) {
+      throw new Error(data.error || 'Analysis failed');
+    }
     
+    // Extract sentiment
+    let sentiment = 'neutral';
+    if (data.sentiment) {
+      sentiment = String(data.sentiment).toLowerCase();
+    } else if (data.prediction) {
+      sentiment = String(data.prediction).toLowerCase();
+    }
+    
+    // Handle confidence score
     let confidence = data.confidence || data.probability || 0.5;
+    if (typeof confidence === 'string') {
+      confidence = parseFloat(confidence);
+    }
+    
     if (confidence <= 1) {
       confidence = Math.round(confidence * 100 * 10) / 10;
     } else if (confidence <= 100) {
@@ -77,14 +92,17 @@ export const analyzeSentiment = async (text) => {
     }
     
     const label = sentiment.charAt(0).toUpperCase() + sentiment.slice(1);
-    
     const { color } = getSentimentVisuals(sentiment);
     
-    const probabilities = data.probabilities || {
-      positive: sentiment === 'positive' ? confidence / 100 : 0,
-      neutral: sentiment === 'neutral' ? confidence / 100 : 0,
-      negative: sentiment === 'negative' ? confidence / 100 : 0
-    };
+    // Handle probabilities
+    let probabilities = data.probabilities;
+    if (!probabilities && data.confidence) {
+      probabilities = {
+        positive: sentiment === 'positive' ? confidence / 100 : 0.1,
+        neutral: sentiment === 'neutral' ? confidence / 100 : 0.1,
+        negative: sentiment === 'negative' ? confidence / 100 : 0.1
+      };
+    }
     
     return {
       success: true,
@@ -95,47 +113,66 @@ export const analyzeSentiment = async (text) => {
       color,
       probabilities,
       timestamp: data.timestamp || new Date().toISOString(),
-      model: data.model || 'sentiment-analyzer-v2',
+      model: data.model || 'sentiment-analyzer-v1',
       raw: data
     };
     
   } catch (error) {
     console.error('Analysis failed:', error);
     
-    const errorMap = {
-      'Network Error': 'Cannot connect to the sentiment analysis service. Please ensure the backend server is running on http://localhost:8000',
-      'timeout of 10000ms exceeded': 'Request timeout. The service is taking longer than expected.',
-      'Request failed with status code 400': 'Invalid input. Please check your text and try again.',
-      'Request failed with status code 404': 'Analysis endpoint not found.',
-      'Request failed with status code 500': 'Server error. Please try again in a moment.',
-      'Request failed with status code 503': 'Service temporarily unavailable.'
-    };
-
-    const errorMessage = errorMap[error.message] || 
-                        error.response?.data?.detail || 
-                        'Unable to analyze text. Please check your connection and try again.';
-
+    // Enhanced error handling
+    let errorMessage = 'Unable to analyze text. Please try again.';
+    
+    if (error.message.includes('Network Error')) {
+      errorMessage = `Cannot connect to backend service. Please check if the backend is running `;  //at ${API_CONFIG.BASE_URL}
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Request timeout. The service is taking longer than expected.';
+    } else if (error.response?.status === 400) {
+      errorMessage = error.response.data?.detail || 'Invalid input. Please check your text.';
+    } else if (error.response?.status === 404) {
+      errorMessage = 'API endpoint not found.';
+    } else if (error.response?.status === 500) {
+      errorMessage = 'Server error occurred. Please try again later.';
+    } else if (error.response?.status === 503) {
+      errorMessage = 'Service temporarily unavailable. Please try again in a moment.';
+    } else if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
     throw new Error(errorMessage);
   }
 };
 
 export const checkBackendHealth = async () => {
   try {
-    const response = await api.get('/');
+    const response = await api.get('/health');
     return {
       status: 'healthy',
       message: response.data.message || 'Service operational',
       version: response.data.version,
       model: response.data.model || 'sentiment-analyzer-v1',
-      classes: response.data.classes || ['Positive', 'Negative'],
-      uptime: response.data.uptime
+      uptime: response.data.uptime,
+      timestamp: response.data.timestamp
     };
   } catch (error) {
-    return {
-      status: 'error',
-      message: 'Service unavailable',
-      error: error.message
-    };
+    // Try fallback endpoint
+    try {
+      const response = await api.get('/ping');
+      return {
+        status: 'healthy',
+        message: 'Service responding to ping',
+        timestamp: new Date().toISOString()
+      };
+    } catch (pingError) {
+      return {
+        status: 'error',
+        message: 'Service unavailable',
+        error: error.message || 'Connection failed',
+        url: API_CONFIG.BASE_URL
+      };
+    }
   }
 };
 
